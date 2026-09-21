@@ -8,12 +8,8 @@ SERVICE="habitquest-oauth"
 SERVICE_ACCOUNT="habitquest-oauth-runtime"
 SECRET_NAME="habitquest-google-client-secret"
 
-PROJECT_ID="$(gcloud config get-value project 2>/dev/null)"
-if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
-  echo "No Google Cloud project is selected."
-  echo "Run: gcloud config set project YOUR_PROJECT_ID"
-  exit 1
-fi
+PROJECT_ID="${PROJECT_ID:-habitquest-505817}"
+gcloud config set project "$PROJECT_ID" >/dev/null
 
 echo "Project: $PROJECT_ID"
 echo "Region:  $REGION"
@@ -43,10 +39,8 @@ unset CLIENT_SECRET
 gcloud secrets add-iam-policy-binding "$SECRET_NAME"   --member="serviceAccount:$SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com"   --role="roles/secretmanager.secretAccessor"   --quiet >/dev/null
 
 if ! gcloud firestore databases describe --database="(default)" >/dev/null 2>&1; then
-  echo
-  echo "Firestore database (default) does not exist yet."
-  echo "Create it once in Google Cloud Console as Firestore Native mode, then run this script again."
-  exit 2
+  echo "Creating Firestore (default) in Native mode..."
+  gcloud firestore databases create     --database="(default)"     --location="$REGION"     --edition=standard     --type=firestore-native     --quiet
 fi
 
 gcloud run deploy "$SERVICE"   --source backend   --region "$REGION"   --allow-unauthenticated   --service-account="$SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com"   --set-env-vars="FRONTEND_ORIGIN=$FRONTEND_ORIGIN,GOOGLE_CLIENT_ID=$CLIENT_ID"   --set-secrets="GOOGLE_CLIENT_SECRET=$SECRET_NAME:latest"
