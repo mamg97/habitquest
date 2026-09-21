@@ -16,6 +16,13 @@ const DEFAULT_GOOGLE_CLIENT_ID =
   "137310587054-pvtskadkd7gpgm2r1024i10hmi9qapcs.apps.googleusercontent.com";
 
 export const GOOGLE_CLIENT_ID_KEY = "habitquest.google.client-id.v1";
+const GOOGLE_ACCESS_TOKEN_KEY = "habitquest.google.access-token.v1";
+const TOKEN_EXPIRY_SAFETY_MS = 60_000;
+
+type StoredGoogleAccessToken = {
+  accessToken: string;
+  expiresAt: number;
+};
 
 type GoogleTokenResponse = {
   access_token?: string;
@@ -64,6 +71,47 @@ export function storeGoogleClientId(clientId: string) {
     const clean = clientId.trim();
     if (clean) window.localStorage.setItem(GOOGLE_CLIENT_ID_KEY, clean);
     else window.localStorage.removeItem(GOOGLE_CLIENT_ID_KEY);
+  } catch {
+    /* ignore unavailable storage */
+  }
+}
+
+export function getStoredGoogleAccessToken(): string | null {
+  try {
+    const raw = window.localStorage.getItem(GOOGLE_ACCESS_TOKEN_KEY);
+    if (!raw) return null;
+
+    const stored = JSON.parse(raw) as StoredGoogleAccessToken;
+    if (
+      !stored?.accessToken ||
+      !Number.isFinite(stored.expiresAt) ||
+      stored.expiresAt <= Date.now() + TOKEN_EXPIRY_SAFETY_MS
+    ) {
+      window.localStorage.removeItem(GOOGLE_ACCESS_TOKEN_KEY);
+      return null;
+    }
+
+    return stored.accessToken;
+  } catch {
+    return null;
+  }
+}
+
+function storeGoogleAccessToken(accessToken: string, expiresInSeconds = 3600) {
+  try {
+    const expiresAt = Date.now() + Math.max(60, expiresInSeconds) * 1000;
+    window.localStorage.setItem(
+      GOOGLE_ACCESS_TOKEN_KEY,
+      JSON.stringify({ accessToken, expiresAt } satisfies StoredGoogleAccessToken),
+    );
+  } catch {
+    /* ignore unavailable storage */
+  }
+}
+
+export function clearStoredGoogleAccessToken() {
+  try {
+    window.localStorage.removeItem(GOOGLE_ACCESS_TOKEN_KEY);
   } catch {
     /* ignore unavailable storage */
   }
@@ -123,15 +171,17 @@ export async function requestGoogleAccessToken(clientId: string) {
           );
           return;
         }
+        storeGoogleAccessToken(response.access_token, response.expires_in);
         resolve(response.access_token);
       },
     });
 
-    tokenClient.requestAccessToken({ prompt: "consent" });
+    tokenClient.requestAccessToken({ prompt: "" });
   });
 }
 
 export function revokeGoogleAccessToken(accessToken: string | null) {
+  clearStoredGoogleAccessToken();
   if (!accessToken) return;
   window.google?.accounts?.oauth2?.revoke(accessToken);
 }
