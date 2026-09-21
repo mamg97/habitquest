@@ -71,7 +71,11 @@ function ProfilePage() {
   const handleImport = async (file: File) => {
     try {
       const res = await importXlsxIntoState(file, state);
-      importData({ habits: res.habits, completions: res.completions });
+      importData({
+        habits: res.habits,
+        completions: res.completions,
+        completionStates: res.completionStates,
+      });
       toast.success(
         `Imported ${res.newCompletions} entries and ${res.newHabits} habits` +
           (res.skipped ? ` · ${res.skipped} rows skipped` : ""),
