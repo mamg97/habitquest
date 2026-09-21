@@ -651,3 +651,38 @@ After the final URL is issued, add:
 `https://habitquest-oauth.<account-subdomain>.workers.dev/oauth/callback`
 
 to the Google OAuth client's authorized redirect URIs.
+
+
+### Cloudflare Worker deployment — completed
+
+The persistent OAuth Worker has been successfully deployed to:
+
+`https://habitquest-oauth.mamg97.workers.dev`
+
+Cloudflare account-wide workers.dev subdomain:
+
+`mamg97.workers.dev`
+
+The Worker currently has these secrets configured in Cloudflare:
+
+- `GOOGLE_CLIENT_SECRET`
+- `SESSION_SECRET`
+
+The frontend is being updated to use this Worker as the persistent Google OAuth session service.
+
+Required Google OAuth redirect URI:
+
+`https://habitquest-oauth.mamg97.workers.dev/oauth/callback`
+
+The Worker code was subsequently updated so the OAuth callback returns to the installed HabitQuest PWA via a fragment-based opaque session token. This avoids putting the encrypted session token in a server-visible query string.
+
+Because the Worker code changed after its first deployment, Wrangler must be run again after pulling the latest repository changes:
+
+```bash
+cd ~/habitquest
+git pull
+cd worker
+npm run deploy
+```
+
+The two Cloudflare secrets remain attached to the Worker and do not need to be entered again.
