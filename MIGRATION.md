@@ -599,3 +599,31 @@ Wrangler reported that no Worker named `habitquest-oauth` existed yet and asked:
 `Do you want to create a new Worker with that name and add secrets to it? (Y/n)`
 
 This is expected on the first secret upload. The correct action is to answer `Y` (or press Enter, since Yes is the default) so Cloudflare creates the Worker and stores the secret there.
+
+
+### Cloudflare Worker secrets — completed
+
+The Cloudflare Worker `habitquest-oauth` has now been created.
+
+The following secrets were successfully uploaded through Wrangler:
+
+- `GOOGLE_CLIENT_SECRET`
+- `SESSION_SECRET`
+
+Both were entered directly into Cloudflare and are not stored in GitHub.
+
+The session secret was generated in Cloud Shell with:
+
+```bash
+openssl rand -base64 48
+```
+
+and piped directly into Wrangler, so the generated value was not written to Git history.
+
+Next step:
+
+```bash
+npm run deploy
+```
+
+After deployment, capture the public `workers.dev` URL and add its `/oauth/callback` endpoint to the Google OAuth client's authorized redirect URIs.
