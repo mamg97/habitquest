@@ -815,3 +815,19 @@ The succeeding run #46 completed successfully with:
 - GitHub Pages deploy: success
 
 Therefore the OAuth callback 404 fix is deployed to production.
+
+
+### Home UX improvements
+
+Two usability changes were added to the Home / Today screen during the migration:
+
+1. A compact `Sync now` button is now available at the top of the Home screen, next to the profile avatar. If Google is not connected yet, the same control starts the Google connection flow.
+2. Habit rows were redesigned into a denser layout so more habits fit on screen at once:
+   - smaller icon block;
+   - reduced vertical padding;
+   - tighter spacing between rows;
+   - more compact category/time metadata;
+   - smaller XP badge;
+   - tighter separation between pending and completed habits.
+
+The entire compact row remains tappable so habits can still be marked or unmarked quickly on iPhone/iPad.
