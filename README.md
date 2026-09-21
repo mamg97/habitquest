@@ -27,6 +27,7 @@ The expected workbook structure is:
 - `Habits`
 - `History`
 - `Meta`
+- `SyncState` — append-only multi-device action log used to make the latest mark/unmark action win
 
 The existing workbook format is preserved, so no data migration inside the spreadsheet is required.
 
