@@ -183,27 +183,9 @@ async function handleCallback(request, env) {
     env.SESSION_SECRET,
   );
 
-  const payload = JSON.stringify({
-    type: "habitquest-oauth",
-    sessionToken,
-  }).replace(/</g, "\\u003c");
-
-  return new Response(
-    `<!doctype html><meta charset="utf-8"><title>HabitQuest connected</title>
-    <script>
-      try {
-        if (window.opener) {
-          window.opener.postMessage(${payload}, ${JSON.stringify(env.FRONTEND_ORIGIN)});
-          window.close();
-        } else {
-          document.body.textContent = "HabitQuest connected. You can close this window.";
-        }
-      } catch {
-        document.body.textContent = "HabitQuest connected. You can close this window.";
-      }
-    </script>`,
-    { headers: { "content-type": "text/html; charset=utf-8" } },
-  );
+  const appUrl = String(env.FRONTEND_APP_URL || (env.FRONTEND_ORIGIN + "/habitquest/"));
+  const redirect = appUrl.replace(/#.*$/, "") + "#oauth_session=" + encodeURIComponent(sessionToken);
+  return Response.redirect(redirect, 302);
 }
 
 async function readSession(request, env) {
