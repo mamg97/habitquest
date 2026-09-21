@@ -70,6 +70,19 @@ export type Completion = {
   xpEarned: number;
 };
 
+/**
+ * Last-write-wins state for one habit on one day.
+ * count=0 is an explicit tombstone meaning "this day was unmarked".
+ */
+export type CompletionDayState = {
+  habitId: string;
+  /** YYYY-MM-DD */
+  date: string;
+  count: number;
+  /** ISO timestamp of the latest mark/unmark action. */
+  updatedAt: string;
+};
+
 
 export type Achievement = {
   id: string;
@@ -116,6 +129,7 @@ export type AppState = {
   user: User;
   habits: Habit[];
   completions: Completion[];
+  completionStates: CompletionDayState[];
 };
 
 /** Cumulative XP required to reach a level (index 0 = level 1). */
