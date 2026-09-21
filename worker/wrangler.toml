@@ -1,0 +1,9 @@
+name = "habitquest-oauth"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+[vars]
+GOOGLE_CLIENT_ID = "137310587054-pvtskadkd7gpgm2r1024i10hmi9qapcs.apps.googleusercontent.com"
+FRONTEND_ORIGIN = "https://mamg97.github.io"
+SESSION_DAYS = "90"
