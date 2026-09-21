@@ -311,6 +311,13 @@ export async function readSheetState(
   accessToken: string,
   id: string,
 ): Promise<SyncPayload | null> {
+  const spreadsheetMeta = await getSpreadsheetMeta(accessToken, id);
+  await ensureSheets(
+    accessToken,
+    id,
+    spreadsheetMeta.sheets.map((sheet) => sheet.properties.title),
+  );
+
   const params = new URLSearchParams({ majorDimension: "ROWS" });
   params.append("ranges", HABIT_SHEET);
   params.append("ranges", HISTORY_SHEET);
