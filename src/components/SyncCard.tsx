@@ -1,16 +1,13 @@
-import { Cloud, CloudOff, ExternalLink, Link2, LogOut, RefreshCw, Save, Settings2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Cloud, CloudOff, ExternalLink, Link2, LogOut, RefreshCw } from "lucide-react";
+import { useState } from "react";
 import { SectionTitle } from "@/components/ui-bits";
 import { useSheetSync } from "@/lib/sheet-sync-store";
 
 export function SyncCard() {
   const {
-    clientId,
-    configured,
     status,
     busy,
     syncing,
-    saveClientId,
     signIn,
     signOut,
     disconnect,
@@ -18,49 +15,17 @@ export function SyncCard() {
     syncNow,
   } = useSheetSync();
 
-  const [oauthClientId, setOauthClientId] = useState(clientId);
   const [url, setUrl] = useState("");
-
-  useEffect(() => setOauthClientId(clientId), [clientId]);
-
-  const saveOAuth = () => {
-    saveClientId(oauthClientId);
-  };
 
   return (
     <section className="mt-8">
       <SectionTitle hint={status.spreadsheetId ? "Linked" : "Off"}>Google Sheets sync</SectionTitle>
       <div className="card-soft space-y-3 p-4">
-        {!configured ? (
+        {!status.signedIn ? (
           <>
             <p className="text-sm font-semibold text-muted-foreground">
-              HabitQuest now connects directly to Google. Add your Google OAuth web client ID once;
-              it is stored only in this browser and is not a secret.
-            </p>
-            <label className="flex items-center gap-2 rounded-2xl bg-muted px-3">
-              <Settings2 className="size-4 shrink-0 text-muted-foreground" />
-              <input
-                value={oauthClientId}
-                onChange={(event) => setOauthClientId(event.target.value)}
-                placeholder="123456789-abc.apps.googleusercontent.com"
-                aria-label="Google OAuth client ID"
-                className="min-h-12 w-full bg-transparent text-sm font-bold outline-none"
-              />
-            </label>
-            <button
-              type="button"
-              onClick={saveOAuth}
-              disabled={!oauthClientId.trim()}
-              className="btn-pop flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-sm font-extrabold uppercase tracking-wide text-primary-foreground disabled:opacity-60"
-            >
-              <Save className="size-5" /> Save client ID
-            </button>
-          </>
-        ) : !status.signedIn ? (
-          <>
-            <p className="text-sm font-semibold text-muted-foreground">
-              Connect your Google account. HabitQuest requests access only to Google Sheets and keeps
-              the access token in memory.
+              Connect Google once. HabitQuest keeps a persistent encrypted session and renews short-lived
+              Google access tokens automatically.
             </p>
             <button
               type="button"
@@ -69,13 +34,6 @@ export function SyncCard() {
               className="btn-pop flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-sm font-extrabold uppercase tracking-wide text-primary-foreground disabled:opacity-60"
             >
               <Cloud className="size-5" /> Connect Google
-            </button>
-            <button
-              type="button"
-              onClick={() => saveClientId("")}
-              className="btn-pop min-h-10 w-full rounded-2xl bg-muted px-3 text-xs font-extrabold text-muted-foreground"
-            >
-              Change OAuth client ID
             </button>
           </>
         ) : (
