@@ -584,3 +584,18 @@ Next pending steps:
 5. add the Worker OAuth callback URL to Google Cloud;
 6. connect the HabitQuest frontend to the Worker;
 7. validate persistent Google Sheets login on iPhone/iPad.
+
+
+### Cloudflare Worker creation prompt
+
+While running:
+
+```bash
+npx wrangler secret put GOOGLE_CLIENT_SECRET
+```
+
+Wrangler reported that no Worker named `habitquest-oauth` existed yet and asked:
+
+`Do you want to create a new Worker with that name and add secrets to it? (Y/n)`
+
+This is expected on the first secret upload. The correct action is to answer `Y` (or press Enter, since Yes is the default) so Cloudflare creates the Worker and stores the secret there.
