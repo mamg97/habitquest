@@ -27,6 +27,10 @@ import type { SyncPayload, SyncStatus } from "./sync-types";
 const PUSH_DEBOUNCE_MS = 2500;
 const POLL_MS = 45000;
 const STATUS_KEY = "habitquest.google-sheet.v1";
+const DEFAULT_SPREADSHEET_ID = "1v_yDn50Pw2t0mcyphHispJ4vSsKVS8Z4oLSgUuxisUA";
+const DEFAULT_SPREADSHEET_URL =
+  "https://docs.google.com/spreadsheets/d/1v_yDn50Pw2t0mcyphHispJ4vSsKVS8Z4oLSgUuxisUA/edit";
+const DEFAULT_SPREADSHEET_TITLE = "HabitQuest Data";
 
 type SyncCtx = {
   clientId: string;
@@ -91,10 +95,10 @@ function loadStatus(): SyncStatus {
     if (!raw) {
       return {
         signedIn: false,
-        connected: false,
-        spreadsheetId: null,
-        spreadsheetUrl: null,
-        spreadsheetTitle: null,
+        connected: true,
+        spreadsheetId: DEFAULT_SPREADSHEET_ID,
+        spreadsheetUrl: DEFAULT_SPREADSHEET_URL,
+        spreadsheetTitle: DEFAULT_SPREADSHEET_TITLE,
         lastSyncedAt: null,
       };
     }
