@@ -901,3 +901,10 @@ This prevents a stale write from Mac/iPhone/iPad from overwriting a newer mark/u
 The existing tabs `Habits`, `History` and `Meta` remain intact and continue to hold the actual user data. `SyncState` is synchronization metadata only.
 
 After this version is deployed, all open HabitQuest instances should be fully closed/reopened once so every device runs the same last-write-wins client.
+
+
+### Automatic SyncState creation
+
+The production spreadsheet existed before the new `SyncState` tab. The client now checks the spreadsheet structure before reading and creates `SyncState` automatically when it is missing.
+
+No manual Sheet edit is required. Existing `Habits`, `History` and `Meta` tabs are left in place, and legacy History rows are used to seed the initial last-write-wins state.
