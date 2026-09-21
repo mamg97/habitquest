@@ -3,10 +3,12 @@ import {
   HABIT_HEADER,
   HISTORY_HEADER,
   SYNC_STATE_HEADER,
+  completionDayKey,
   deriveCompletionStates,
   habitRows,
   historyRows,
   metaRows,
+  mergeStates,
   parseMetaRows,
   syncStateRows,
 } from "./sync-format";
@@ -352,28 +354,39 @@ export async function readSheetState(
 
   const { user, updatedAt } = parseMetaRows(ranges[2]?.values ?? []);
 
-  const parsedCompletionStates = toObjects(ranges[3])
-    .filter((row) => row["habitId"] && row["date"] && row["updatedAt"])
-    .map((row) => ({
-      habitId: row["habitId"]!,
-      date: row["date"]!,
+  const latestStateByDay = new Map<string, SyncPayload["completionStates"][number]>();
+  for (const row of toObjects(ranges[3])) {
+    if (!row["habitId"] || !row["date"] || !row["updatedAt"]) continue;
+    const state = {
+      habitId: row["habitId"],
+      date: row["date"],
       count: Math.max(0, Math.floor(Number(row["count"]) || 0)),
-      updatedAt: row["updatedAt"]!,
-    }));
+      updatedAt: row["updatedAt"],
+    };
+    const key = completionDayKey(state);
+    const previous = latestStateByDay.get(key);
+    if (!previous || state.updatedAt > previous.updatedAt) latestStateByDay.set(key, state);
+  }
 
   const completionStates =
-    parsedCompletionStates.length > 0
-      ? parsedCompletionStates
+    latestStateByDay.size > 0
+      ? [...latestStateByDay.values()]
       : deriveCompletionStates(completions);
 
   if (!habits.length && !completions.length && !user) return null;
 
+  const syncUpdatedAt = updatedAt || new Date(0).toISOString();
+  const reconciled = mergeStates(
+    { habits, completions, completionStates, updatedAt: syncUpdatedAt },
+    { habits, completions, completionStates, updatedAt: syncUpdatedAt },
+  );
+
   return {
-    habits,
-    completions,
-    completionStates,
+    habits: reconciled.habits,
+    completions: reconciled.completions,
+    completionStates: reconciled.completionStates,
     user: user as SyncPayload["user"],
-    updatedAt: updatedAt || new Date(0).toISOString(),
+    updatedAt: syncUpdatedAt,
   };
 }
 
@@ -396,7 +409,6 @@ export async function writeSheetState(
   const habits = [HABIT_HEADER, ...habitRows(payload)];
   const history = [HISTORY_HEADER, ...historyRows(payload)];
   const metadata = metaRows(payload);
-  const syncState = [SYNC_STATE_HEADER, ...syncStateRows(payload)];
 
   await sheetsFetch(accessToken, `/spreadsheets/${encodeURIComponent(id)}/values:batchUpdate`, {
     method: "POST",
@@ -406,7 +418,7 @@ export async function writeSheetState(
         { range: `${HABIT_SHEET}!A1`, values: habits },
         { range: `${HISTORY_SHEET}!A1`, values: history },
         { range: `${META_SHEET}!A1`, values: metadata },
-        { range: `${SYNC_STATE_SHEET}!A1`, values: syncState },
+        { range: `${SYNC_STATE_SHEET}!A1`, values: [SYNC_STATE_HEADER] },
       ],
     }),
   });
@@ -418,10 +430,45 @@ export async function writeSheetState(
         `${HABIT_SHEET}!A${habits.length + 1}:Z`,
         `${HISTORY_SHEET}!A${history.length + 1}:Z`,
         `${META_SHEET}!A${metadata.length + 1}:Z`,
-        `${SYNC_STATE_SHEET}!A${syncState.length + 1}:Z`,
       ],
     }),
   });
+
+  // SyncState is an append-only action log. Never clear it: old events are the
+  // tombstones/history that make concurrent multi-device updates converge.
+  const existingStateRange = await sheetsFetch<ValueRange>(
+    accessToken,
+    `/spreadsheets/${encodeURIComponent(id)}/values/${encodeURIComponent(
+      `${SYNC_STATE_SHEET}!A2:D`,
+    )}?majorDimension=ROWS`,
+  );
+  const existingEvents = new Set(
+    (existingStateRange.values ?? []).map((row) => {
+      const habitId = String(row?.[0] ?? "");
+      const date = String(row?.[1] ?? "");
+      const updatedAt = String(row?.[3] ?? "");
+      return `${habitId}|${date}|${updatedAt}`;
+    }),
+  );
+
+  const newEvents = payload.completionStates.filter(
+    (state) => !existingEvents.has(`${state.habitId}|${state.date}|${state.updatedAt}`),
+  );
+
+  if (newEvents.length) {
+    await sheetsFetch(
+      accessToken,
+      `/spreadsheets/${encodeURIComponent(id)}/values/${encodeURIComponent(
+        `${SYNC_STATE_SHEET}!A:D`,
+      )}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          values: syncStateRows({ ...payload, completionStates: newEvents }),
+        }),
+      },
+    );
+  }
 }
 
 export async function createHabitQuestSpreadsheet(
