@@ -2,8 +2,6 @@
 
 HabitQuest is a personal, mobile-first habit tracker with XP, levels, streaks, achievements, history and Google Sheets synchronization.
 
-This repository is the independent version of the application. It is designed to run as a static PWA on GitHub Pages with no Lovable or Supabase runtime dependency.
-
 ## Architecture
 
 - React + TypeScript + Vite
@@ -28,7 +26,7 @@ The expected workbook structure is:
 - `History`
 - `Meta`
 
-The existing format is kept compatible with the previous version so no data migration inside the spreadsheet is required.
+The existing workbook format is preserved, so no data migration inside the spreadsheet is required.
 
 ## Google Sheets setup
 
@@ -43,7 +41,7 @@ HabitQuest uses a Google OAuth **Web application client ID**. The client ID is p
 6. For local development, you may also add:
    - `http://localhost:5173`
 7. Open HabitQuest, go to **Profile → Google Sheets sync**, paste the OAuth client ID and connect Google.
-8. Paste the URL of the existing HabitQuest spreadsheet. The app will read it before it writes anything.
+8. Paste the URL of the existing HabitQuest spreadsheet. The app reads it before writing anything.
 
 No Google client secret belongs in this repository.
 
@@ -62,29 +60,20 @@ To verify the production build:
 
 ```bash
 npm run build
+npm run typecheck
 npm run preview
 ```
 
 ## GitHub Pages
 
-The workflow in `.github/workflows/deploy.yml` builds every push to the migration branch for validation and deploys `main` to GitHub Pages.
+The workflow in `.github/workflows/deploy.yml` validates and deploys `main` to GitHub Pages.
 
-The Vite build uses relative asset paths and hash-based routing, so renaming the repository to `habitquest` does not require hard-coding the repository path in the application.
+The Vite build uses relative asset paths and hash-based routing, so the app works under the repository Pages path.
 
-Expected public URL after the repository is renamed and Pages is enabled:
+Public URL:
 
 `https://mamg97.github.io/habitquest/`
 
-## Repository independence
+## Ownership
 
-The application source and runtime do not require:
-
-- Lovable
-- Lovable Cloud
-- Lovable authentication
-- Lovable connector gateway
-- Supabase
-- a Node server
-- a paid hosting service
-
-The Google Sheet remains in the user's own Google Drive and is not stored in GitHub.
+The application runs from this repository, GitHub Pages and the user's own Google Sheet. No paid hosting service or separate application server is required.
