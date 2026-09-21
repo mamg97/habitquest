@@ -12,6 +12,8 @@ import { HABIT_SHEET, HISTORY_SHEET, META_SHEET, type SyncPayload } from "./sync
 const SHEETS_API = "https://sheets.googleapis.com/v4";
 const GOOGLE_IDENTITY_SCRIPT = "https://accounts.google.com/gsi/client";
 const GOOGLE_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+const DEFAULT_GOOGLE_CLIENT_ID =
+  "137310587054-pvtskadkd7gpgm2r1024i10hmi9qapcs.apps.googleusercontent.com";
 
 export const GOOGLE_CLIENT_ID_KEY = "habitquest.google.client-id.v1";
 
@@ -51,9 +53,9 @@ export function getStoredGoogleClientId() {
   const fromBuild = String(import.meta.env["VITE_GOOGLE_CLIENT_ID"] ?? "").trim();
   if (fromBuild) return fromBuild;
   try {
-    return window.localStorage.getItem(GOOGLE_CLIENT_ID_KEY)?.trim() ?? "";
+    return window.localStorage.getItem(GOOGLE_CLIENT_ID_KEY)?.trim() || DEFAULT_GOOGLE_CLIENT_ID;
   } catch {
-    return "";
+    return DEFAULT_GOOGLE_CLIENT_ID;
   }
 }
 
