@@ -530,3 +530,29 @@ The spreadsheet is always the critical asset and must remain untouched during in
 - New code must pass build and TypeScript validation.
 - Infrastructure changes should be reversible.
 - The migration log must be updated whenever architecture, credentials, hosting or sync behavior changes.
+
+
+### Troubleshooting — Cloudflare API token
+
+An initial Wrangler API-token test failed with:
+
+`Invalid format for Authorization header [code: 6111]`
+
+Cause:
+
+The shell command was executed with the placeholder value:
+
+`PEGA_AQUI_EL_TOKEN`
+
+instead of the real Cloudflare API token.
+
+Safe retry method that avoids showing the token on screen:
+
+```bash
+read -rsp "Cloudflare API token: " CLOUDFLARE_API_TOKEN
+echo
+export CLOUDFLARE_API_TOKEN
+npx wrangler whoami
+```
+
+The actual Cloudflare API token must never be sent to ChatGPT or committed to GitHub.
