@@ -113,12 +113,27 @@ export function getStoredGoogleAccessToken(): string | null {
   }
 }
 
-function storeGoogleAccessToken(accessToken: string, expiresInSeconds = 3600) {
+export function storeGoogleAccessToken(accessToken: string, expiresInSeconds = 3600) {
   try {
     const expiresAt = Date.now() + Math.max(60, expiresInSeconds) * 1000;
     window.localStorage.setItem(
       GOOGLE_ACCESS_TOKEN_KEY,
       JSON.stringify({ accessToken, expiresAt } satisfies StoredGoogleAccessToken),
+    );
+  } catch {
+    /* ignore unavailable storage */
+  }
+}
+
+export function storeGoogleAccessTokenUntil(accessToken: string, expiresAt: number | null) {
+  try {
+    const safeExpiry =
+      Number.isFinite(expiresAt) && Number(expiresAt) > Date.now()
+        ? Number(expiresAt)
+        : Date.now() + 55 * 60 * 1000;
+    window.localStorage.setItem(
+      GOOGLE_ACCESS_TOKEN_KEY,
+      JSON.stringify({ accessToken, expiresAt: safeExpiry } satisfies StoredGoogleAccessToken),
     );
   } catch {
     /* ignore unavailable storage */
