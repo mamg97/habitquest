@@ -686,3 +686,39 @@ npm run deploy
 ```
 
 The two Cloudflare secrets remain attached to the Worker and do not need to be entered again.
+
+
+### Frontend → Worker integration — implemented
+
+The HabitQuest frontend is now wired to:
+
+`https://habitquest-oauth.mamg97.workers.dev`
+
+Implementation details:
+
+- `Connect Google` now starts OAuth through the Cloudflare Worker;
+- the Worker receives Google's authorization code and refresh token;
+- the refresh token is sealed by the Worker into an opaque encrypted session token;
+- HabitQuest stores only that opaque session token;
+- the OAuth return uses a URL fragment (`#oauth_session=...`) so the session token is not sent to GitHub Pages as a query string;
+- the frontend consumes the session token, cleans the URL, restores the Profile route and requests a fresh Google access token from the Worker;
+- short-lived Google access tokens continue to be cached locally only until expiry;
+- when an access token expires, HabitQuest asks the Worker for a new one without user interaction;
+- all Google Sheets operations now obtain a usable access token automatically before reading or writing.
+
+Still required before live testing:
+
+1. Add this exact Google OAuth authorized redirect URI:
+
+`https://habitquest-oauth.mamg97.workers.dev/oauth/callback`
+
+2. Redeploy the Worker after pulling the latest code:
+
+```bash
+cd ~/habitquest
+git pull
+cd worker
+npm run deploy
+```
+
+The existing Cloudflare secrets remain in place; they do not need to be re-entered.
