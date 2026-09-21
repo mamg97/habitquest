@@ -627,3 +627,27 @@ npm run deploy
 ```
 
 After deployment, capture the public `workers.dev` URL and add its `/oauth/callback` endpoint to the Google OAuth client's authorized redirect URIs.
+
+
+### workers.dev subdomain registration
+
+The first Worker deployment successfully uploaded the `habitquest-oauth` script and then paused because the Cloudflare account did not yet have a `workers.dev` subdomain registered.
+
+Wrangler prompted:
+
+`Would you like to register a workers.dev subdomain now? (Y/n)`
+
+Correct action:
+
+- answer `Y` or press Enter;
+- if Cloudflare asks for an account-wide `workers.dev` subdomain, choose a short stable value such as `mamg97`.
+
+Expected Worker URL format:
+
+`https://habitquest-oauth.<account-subdomain>.workers.dev`
+
+After the final URL is issued, add:
+
+`https://habitquest-oauth.<account-subdomain>.workers.dev/oauth/callback`
+
+to the Google OAuth client's authorized redirect URIs.
