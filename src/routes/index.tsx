@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Flame, Plus, RefreshCw, Sparkles, Zap } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Flame, LayoutGrid, List, Plus, RefreshCw, Sparkles, Zap } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Confetti } from "@/components/Confetti";
 import { CircleRing, ProgressBar, SectionTitle, StatPill, categoryOf } from "@/components/ui-bits";
@@ -68,6 +68,7 @@ function TodayPage() {
     goToPreviousDay,
     goToNextDay,
     goToToday,
+    setUser,
   } = useHabits();
 
   const navigate = useNavigate();
@@ -82,6 +83,8 @@ function TodayPage() {
   useEffect(() => {
     if (ready && !state.user.onboarded) navigate({ to: "/onboarding" });
   }, [ready, state.user.onboarded, navigate]);
+
+  const view = state.user.habitView ?? "list";
 
   const total = todayHabits.length;
   const done = todayHabits.filter((h) => completedToday.has(h.id)).length;
@@ -237,9 +240,19 @@ function TodayPage() {
       </div>
 
       <section className="mt-5">
-        <SectionTitle hint={total ? `${total - done} left` : undefined}>
-          {isToday ? "Today's journey" : "That day's journey"}
-        </SectionTitle>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <SectionTitle hint={total ? `${total - done} left` : undefined}>
+            {isToday ? "Today's journey" : "That day's journey"}
+          </SectionTitle>
+          <button
+            type="button"
+            aria-label={view === "list" ? "Switch to compact grid view" : "Switch to list view"}
+            onClick={() => setUser({ habitView: view === "list" ? "compact" : "list" })}
+            className="grid size-10 shrink-0 place-items-center rounded-xl border-2 border-border text-muted-foreground hover:border-primary hover:text-primary"
+          >
+            {view === "list" ? <LayoutGrid className="size-5" /> : <List className="size-5" />}
+          </button>
+        </div>
 
 
         {total === 0 ? (
@@ -259,12 +272,19 @@ function TodayPage() {
         ) : (
           <>
             {pending.length > 0 ? (
-              <ol className="space-y-1.5">
+              <ol className={view === "compact" ? "grid grid-cols-2 gap-2" : "relative space-y-3 pl-2"}>
+                {view === "list" ? (
+                  <span
+                    className="absolute bottom-6 left-[2.05rem] top-6 -z-0 w-1 rounded-full bg-muted"
+                    aria-hidden
+                  />
+                ) : null}
                 {pending.map((habit) => (
                   <HabitRow
                     key={habit.id}
                     habit={habit}
                     isDone={false}
+                    compact={view === "compact"}
                     count={todayCounts.get(habit.id) ?? 0}
                     floating={floating}
                     onToggle={handleToggle}
@@ -274,16 +294,19 @@ function TodayPage() {
             ) : null}
 
             {finished.length > 0 ? (
-              <div className={pending.length ? "mt-4" : ""}>
-                <p className="mb-1.5 px-1 text-[10px] font-extrabold uppercase tracking-wide text-muted-foreground">
+              <div className={pending.length ? (view === "compact" ? "mt-4" : "mt-7") : ""}>
+                <p className={view === "compact"
+                  ? "mb-1.5 px-1 text-[10px] font-extrabold uppercase tracking-wide text-muted-foreground"
+                  : "mb-2 px-2 text-xs font-extrabold uppercase tracking-wide text-muted-foreground"}>
                   Completed · {finished.length}
                 </p>
-                <ol className="space-y-1.5">
+                <ol className={view === "compact" ? "grid grid-cols-2 gap-2" : "space-y-3 pl-2"}>
                   {finished.map((habit) => (
                     <HabitRow
                       key={habit.id}
                       habit={habit}
                       isDone
+                      compact={view === "compact"}
                       count={todayCounts.get(habit.id) ?? 0}
                       floating={floating}
                       onToggle={handleToggle}
@@ -357,12 +380,14 @@ function TodayPage() {
 function HabitRow({
   habit,
   isDone,
+  compact,
   count,
   floating,
   onToggle,
 }: {
   habit: Habit;
   isDone: boolean;
+  compact: boolean;
   count: number;
   floating: { id: string; xp: number } | null;
   onToggle: (id: string, xp: number, wasDone: boolean) => void;
@@ -370,22 +395,81 @@ function HabitRow({
   const cat = categoryOf(habit.category);
   const target = Math.max(1, habit.timesPerDay ?? 1);
 
+  if (compact) {
+    return (
+      <li>
+        <button
+          type="button"
+          onClick={() => onToggle(habit.id, habit.xpReward, isDone)}
+          aria-pressed={isDone}
+          className={`btn-pop flex min-h-[5.25rem] w-full flex-col items-stretch rounded-2xl border p-2.5 text-left ${
+            isDone ? "border-success bg-success-soft" : "border-border bg-card hover:border-primary"
+          }`}
+        >
+          <span className="flex items-start gap-2">
+            <span
+              className={`relative grid size-9 shrink-0 place-items-center rounded-xl text-lg ${
+                isDone ? "bg-success text-success-foreground" : "bg-muted"
+              }`}
+            >
+              {isDone ? <Check className="size-5 animate-pop-in stroke-[3]" /> : habit.icon}
+              {floating?.id === habit.id ? (
+                <span className="animate-xp-float absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-extrabold text-success">
+                  +{floating.xp} XP
+                </span>
+              ) : null}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span
+                className={`block line-clamp-2 text-xs font-extrabold leading-tight ${
+                  isDone ? "text-muted-foreground line-through" : ""
+                }`}
+              >
+                {habit.name}
+              </span>
+            </span>
+            <span
+              className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-extrabold ${
+                isDone ? "bg-success text-success-foreground" : "bg-accent/30 text-accent-foreground"
+              }`}
+            >
+              +{habit.xpReward}
+            </span>
+          </span>
+          <span className="mt-auto flex items-center gap-1 overflow-hidden whitespace-nowrap pt-1.5 text-[9px] font-bold text-muted-foreground">
+            <span className="truncate" style={{ color: `var(--${cat.color})` }}>
+              {cat.icon} {cat.label}
+            </span>
+            {target > 1 ? (
+              <>
+                <span>·</span>
+                <span className={isDone ? "text-success" : "text-primary"}>
+                  {Math.min(count, target)}/{target}
+                </span>
+              </>
+            ) : null}
+          </span>
+        </button>
+      </li>
+    );
+  }
+
   return (
-    <li>
+    <li className="relative z-10">
       <button
         type="button"
         onClick={() => onToggle(habit.id, habit.xpReward, isDone)}
         aria-pressed={isDone}
-        className={`btn-pop flex min-h-12 w-full items-center gap-2.5 rounded-2xl border px-2.5 py-2 text-left ${
+        className={`btn-pop flex w-full items-center gap-4 rounded-3xl border-2 p-3.5 text-left ${
           isDone ? "border-success bg-success-soft" : "border-border bg-card hover:border-primary"
         }`}
       >
         <span
-          className={`relative grid size-10 shrink-0 place-items-center rounded-xl text-lg ${
+          className={`relative grid size-14 shrink-0 place-items-center rounded-2xl text-2xl ${
             isDone ? "bg-success text-success-foreground" : "bg-muted"
           }`}
         >
-          {isDone ? <Check className="size-5 animate-pop-in stroke-[3]" /> : habit.icon}
+          {isDone ? <Check className="size-8 animate-pop-in stroke-[3]" /> : habit.icon}
           {floating?.id === habit.id ? (
             <span className="animate-xp-float absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-sm font-extrabold text-success">
               +{floating.xp} XP
@@ -394,13 +478,13 @@ function HabitRow({
         </span>
         <span className="min-w-0 flex-1">
           <span
-            className={`block truncate text-sm font-extrabold leading-tight ${
+            className={`block truncate text-base font-extrabold ${
               isDone ? "text-muted-foreground line-through" : ""
             }`}
           >
             {habit.name}
           </span>
-          <span className="mt-0.5 flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-[10px] font-bold leading-tight text-muted-foreground">
+          <span className="mt-0.5 flex flex-wrap items-center gap-2 text-xs font-bold text-muted-foreground">
             <span style={{ color: `var(--${cat.color})` }}>
               {cat.icon} {cat.label}
             </span>
@@ -417,7 +501,7 @@ function HabitRow({
           </span>
         </span>
         <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
+          className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-extrabold ${
             isDone ? "bg-success text-success-foreground" : "bg-accent/30 text-accent-foreground"
           }`}
         >
