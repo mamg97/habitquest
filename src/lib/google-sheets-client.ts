@@ -37,11 +37,27 @@ type GoogleTokenClient = {
   requestAccessToken: (options?: { prompt?: string }) => void;
 };
 
+type GoogleCodeClient = {
+  requestCode: () => void;
+};
+
+type GoogleCodeResponse = {
+  code?: string;
+  error?: string;
+  error_description?: string;
+};
+
 declare global {
   interface Window {
     google?: {
       accounts: {
         oauth2: {
+          initCodeClient: (config: {
+            client_id: string;
+            scope: string;
+            ux_mode: "popup";
+            callback: (response: GoogleCodeResponse) => void;
+          }) => GoogleCodeClient;
           initTokenClient: (config: {
             client_id: string;
             scope: string;
@@ -377,5 +393,40 @@ export async function createHabitQuestSpreadsheet(
         properties: { title: sheetTitle },
       })),
     }),
+  });
+}
+
+
+export async function requestGoogleAuthorizationCode(clientId: string) {
+  if (!clientId.trim()) throw new Error("Add your Google OAuth client ID first.");
+  await loadGoogleIdentityScript();
+
+  return new Promise<string>((resolve, reject) => {
+    const oauth2 = window.google?.accounts?.oauth2;
+    if (!oauth2) {
+      reject(new Error("Google Identity is unavailable."));
+      return;
+    }
+
+    const codeClient = oauth2.initCodeClient({
+      client_id: clientId.trim(),
+      scope: GOOGLE_SCOPE,
+      ux_mode: "popup",
+      callback: (response) => {
+        if (response.error || !response.code) {
+          reject(
+            new Error(
+              response.error_description ||
+                response.error ||
+                "Google did not return an authorization code.",
+            ),
+          );
+          return;
+        }
+        resolve(response.code);
+      },
+    });
+
+    codeClient.requestCode();
   });
 }
