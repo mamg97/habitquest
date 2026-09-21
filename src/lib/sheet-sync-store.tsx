@@ -364,7 +364,7 @@ export function SheetSyncProvider({ children }: { children: ReactNode }) {
 
   const createSheet = useCallback(
     async (title?: string) => {
-      const accessToken = accessTokenRef.current;
+      const accessToken = await getUsableAccessToken();
       if (!accessToken) {
         toast.error("Connect Google first");
         return;
@@ -403,12 +403,12 @@ export function SheetSyncProvider({ children }: { children: ReactNode }) {
         setBusy(false);
       }
     },
-    [buildPayload, pushPayload, updateStatus],
+    [buildPayload, getUsableAccessToken, pushPayload, updateStatus],
   );
 
   const linkSheet = useCallback(
     async (input: string) => {
-      const accessToken = accessTokenRef.current;
+      const accessToken = await getUsableAccessToken();
       if (!accessToken) {
         toast.error("Connect Google first");
         return;
@@ -442,7 +442,7 @@ export function SheetSyncProvider({ children }: { children: ReactNode }) {
         setBusy(false);
       }
     },
-    [syncFromSheet, updateStatus],
+    [getUsableAccessToken, syncFromSheet, updateStatus],
   );
 
   const syncNow = useCallback(async () => {
