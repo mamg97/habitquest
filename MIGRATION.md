@@ -791,3 +791,27 @@ Fix:
 No Google Sheet data was modified by this failure.
 
 No Worker redeploy is required for this fix because it is frontend-only. GitHub Pages must finish deploying the new frontend before retesting OAuth.
+
+
+### GitHub Actions cancellation after OAuth 404 fix
+
+After the frontend fix for the OAuth callback 404, GitHub Actions run #45 appeared as `Cancelled`.
+
+This was **not a code failure**.
+
+Reason shown by GitHub:
+
+`Canceling since a higher priority waiting request for pages exists`
+
+The workflow uses a Pages concurrency group with cancellation of older in-flight runs, so when a newer commit was queued, the older deployment was intentionally stopped.
+
+The succeeding run #46 completed successfully with:
+
+- production build: success
+- TypeScript check: success
+- OAuth Worker validation: success
+- GitHub Pages configuration: success
+- Pages artifact upload: success
+- GitHub Pages deploy: success
+
+Therefore the OAuth callback 404 fix is deployed to production.
