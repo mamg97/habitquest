@@ -847,3 +847,57 @@ The toggle uses the same `LayoutGrid ↔ List` control pattern already present o
 The selected value reuses `user.habitView`, so the visual preference is remembered and remains consistent between Today and Habits.
 
 Both views keep the entire habit card tappable for marking/unmarking completions.
+
+
+### Multi-device last-action-wins sync
+
+A synchronization bug was found while HabitQuest was open simultaneously on Mac, iPhone and iPad.
+
+Observed behavior:
+
+- a habit was marked complete on one device;
+- the user explicitly unmarked it on another device;
+- the next sync could restore the older completed state.
+
+Root cause:
+
+The previous completion merge treated History rows mainly as records to union/merge. A deletion (unmark) was represented by the **absence** of a completion row, so another device that still had the old completion could resurrect it.
+
+Required behavior:
+
+**The latest user action on any device must win.**
+
+Implementation:
+
+- Added `CompletionDayState` for every `habitId + date`.
+- Every mark/unmark records:
+  - `habitId`
+  - `date`
+  - resulting completion `count`
+  - action `updatedAt`
+- `count=0` is an explicit tombstone meaning the habit/day was unmarked.
+- Merge logic now compares `updatedAt` independently per habit/day.
+- The most recent action wins regardless of which device produced it.
+- Legacy History is automatically converted to initial day states, so existing data is preserved.
+- XLSX export/import now preserves this sync state too.
+
+A new technical Google Sheet tab is used:
+
+`SyncState`
+
+Columns:
+
+- `habitId`
+- `date`
+- `count`
+- `updatedAt`
+
+Concurrency hardening:
+
+`SyncState` is an **append-only action log**. HabitQuest never clears old sync actions. New actions are appended and, when reading, HabitQuest chooses the event with the greatest `updatedAt` for each habit/day.
+
+This prevents a stale write from Mac/iPhone/iPad from overwriting a newer mark/unmark action from another device.
+
+The existing tabs `Habits`, `History` and `Meta` remain intact and continue to hold the actual user data. `SyncState` is synchronization metadata only.
+
+After this version is deployed, all open HabitQuest instances should be fully closed/reopened once so every device runs the same last-write-wins client.
