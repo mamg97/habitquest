@@ -39,6 +39,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Validate OAuth backend
+        run: |
+          npm install --prefix backend --no-audit --no-fund
+          node --check backend/server.mjs
+
       - name: Configure GitHub Pages
         if: github.ref == 'refs/heads/main'
         uses: actions/configure-pages@v5
