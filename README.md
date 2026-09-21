@@ -1,5 +1,7 @@
 # HabitQuest
 
+> Migration status and technical history: see [MIGRATION.md](./MIGRATION.md).
+
 HabitQuest is a personal, mobile-first habit tracker with XP, levels, streaks, achievements, history and Google Sheets synchronization.
 
 ## Architecture
