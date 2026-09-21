@@ -14,6 +14,7 @@ import {
   createHabitQuestSpreadsheet,
   extractSpreadsheetId,
   getSpreadsheetMeta,
+  getStoredGoogleAccessToken,
   getStoredGoogleClientId,
   readSheetState,
   requestGoogleAccessToken,
@@ -146,11 +147,15 @@ function hasData(payload: SyncPayload) {
 export function SheetSyncProvider({ children }: { children: ReactNode }) {
   const { ready, state, importData, setUser } = useHabits();
   const [clientId, setClientId] = useState(() => getStoredGoogleClientId());
-  const [status, setStatus] = useState<SyncStatus>(() => loadStatus());
+  const [initialAccessToken] = useState(() => getStoredGoogleAccessToken());
+  const [status, setStatus] = useState<SyncStatus>(() => ({
+    ...loadStatus(),
+    signedIn: Boolean(initialAccessToken),
+  }));
   const [busy, setBusy] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
-  const accessTokenRef = useRef<string | null>(null);
+  const accessTokenRef = useRef<string | null>(initialAccessToken);
   const pulledRef = useRef(false);
   const remoteSnapshotRef = useRef<string | null>(null);
   const localChangedAtRef = useRef<string>(new Date(0).toISOString());
@@ -465,23 +470,40 @@ export function SheetSyncProvider({ children }: { children: ReactNode }) {
   }, [buildPayload, localSnap, pushPayload, ready, status.signedIn, status.spreadsheetId]);
 
   useEffect(() => {
-    if (!status.signedIn || !status.spreadsheetId) return;
+    if (!ready || !status.signedIn || !status.spreadsheetId) return;
 
     const tick = () => {
-      if (document.visibilityState !== "visible" || !accessTokenRef.current) return;
-      void syncFromSheet(status.spreadsheetId!, { silent: true }).catch((error) => {
-        console.error(error);
-      });
+      if (document.visibilityState !== "visible") return;
+
+      const storedToken = getStoredGoogleAccessToken();
+      if (!storedToken) {
+        accessTokenRef.current = null;
+        pulledRef.current = false;
+        setStatus((previous) => ({ ...previous, signedIn: false }));
+        return;
+      }
+
+      accessTokenRef.current = storedToken;
+      void syncFromSheet(status.spreadsheetId!, { silent: true })
+        .then(() => {
+          pulledRef.current = true;
+        })
+        .catch((error) => {
+          console.error(error);
+        });
     };
 
+    tick();
     const interval = window.setInterval(tick, POLL_MS);
     window.addEventListener("focus", tick);
+    document.addEventListener("visibilitychange", tick);
 
     return () => {
       window.clearInterval(interval);
       window.removeEventListener("focus", tick);
+      document.removeEventListener("visibilitychange", tick);
     };
-  }, [status.signedIn, status.spreadsheetId, syncFromSheet]);
+  }, [ready, status.signedIn, status.spreadsheetId, syncFromSheet]);
 
   const value = useMemo<SyncCtx>(
     () => ({
