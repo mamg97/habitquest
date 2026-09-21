@@ -2,12 +2,21 @@ import type { Completion, Habit } from "./habit-types";
 import {
   HABIT_HEADER,
   HISTORY_HEADER,
+  SYNC_STATE_HEADER,
+  deriveCompletionStates,
   habitRows,
   historyRows,
   metaRows,
   parseMetaRows,
+  syncStateRows,
 } from "./sync-format";
-import { HABIT_SHEET, HISTORY_SHEET, META_SHEET, type SyncPayload } from "./sync-types";
+import {
+  HABIT_SHEET,
+  HISTORY_SHEET,
+  META_SHEET,
+  SYNC_STATE_SHEET,
+  type SyncPayload,
+} from "./sync-types";
 
 const SHEETS_API = "https://sheets.googleapis.com/v4";
 const GOOGLE_IDENTITY_SCRIPT = "https://accounts.google.com/gsi/client";
@@ -266,7 +275,7 @@ export async function getSpreadsheetMeta(accessToken: string, id: string) {
 }
 
 async function ensureSheets(accessToken: string, id: string, existing: string[]) {
-  const missing = [HABIT_SHEET, HISTORY_SHEET, META_SHEET].filter(
+  const missing = [HABIT_SHEET, HISTORY_SHEET, META_SHEET, SYNC_STATE_SHEET].filter(
     (title) => !existing.includes(title),
   );
   if (!missing.length) return;
@@ -304,6 +313,7 @@ export async function readSheetState(
   params.append("ranges", HABIT_SHEET);
   params.append("ranges", HISTORY_SHEET);
   params.append("ranges", META_SHEET);
+  params.append("ranges", SYNC_STATE_SHEET);
 
   const result = await sheetsFetch<{ valueRanges?: ValueRange[] }>(
     accessToken,
@@ -342,11 +352,26 @@ export async function readSheetState(
 
   const { user, updatedAt } = parseMetaRows(ranges[2]?.values ?? []);
 
+  const parsedCompletionStates = toObjects(ranges[3])
+    .filter((row) => row["habitId"] && row["date"] && row["updatedAt"])
+    .map((row) => ({
+      habitId: row["habitId"]!,
+      date: row["date"]!,
+      count: Math.max(0, Math.floor(Number(row["count"]) || 0)),
+      updatedAt: row["updatedAt"]!,
+    }));
+
+  const completionStates =
+    parsedCompletionStates.length > 0
+      ? parsedCompletionStates
+      : deriveCompletionStates(completions);
+
   if (!habits.length && !completions.length && !user) return null;
 
   return {
     habits,
     completions,
+    completionStates,
     user: user as SyncPayload["user"],
     updatedAt: updatedAt || new Date(0).toISOString(),
   };
@@ -371,6 +396,7 @@ export async function writeSheetState(
   const habits = [HABIT_HEADER, ...habitRows(payload)];
   const history = [HISTORY_HEADER, ...historyRows(payload)];
   const metadata = metaRows(payload);
+  const syncState = [SYNC_STATE_HEADER, ...syncStateRows(payload)];
 
   await sheetsFetch(accessToken, `/spreadsheets/${encodeURIComponent(id)}/values:batchUpdate`, {
     method: "POST",
@@ -380,6 +406,7 @@ export async function writeSheetState(
         { range: `${HABIT_SHEET}!A1`, values: habits },
         { range: `${HISTORY_SHEET}!A1`, values: history },
         { range: `${META_SHEET}!A1`, values: metadata },
+        { range: `${SYNC_STATE_SHEET}!A1`, values: syncState },
       ],
     }),
   });
@@ -391,6 +418,7 @@ export async function writeSheetState(
         `${HABIT_SHEET}!A${habits.length + 1}:Z`,
         `${HISTORY_SHEET}!A${history.length + 1}:Z`,
         `${META_SHEET}!A${metadata.length + 1}:Z`,
+        `${SYNC_STATE_SHEET}!A${syncState.length + 1}:Z`,
       ],
     }),
   });
@@ -404,7 +432,7 @@ export async function createHabitQuestSpreadsheet(
     method: "POST",
     body: JSON.stringify({
       properties: { title },
-      sheets: [HABIT_SHEET, HISTORY_SHEET, META_SHEET].map((sheetTitle) => ({
+      sheets: [HABIT_SHEET, HISTORY_SHEET, META_SHEET, SYNC_STATE_SHEET].map((sheetTitle) => ({
         properties: { title: sheetTitle },
       })),
     }),
