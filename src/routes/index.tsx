@@ -1,10 +1,11 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Flame, Plus, Sparkles, Zap } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Flame, Plus, RefreshCw, Sparkles, Zap } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Confetti } from "@/components/Confetti";
 import { CircleRing, ProgressBar, SectionTitle, StatPill, categoryOf } from "@/components/ui-bits";
 import { useHabits } from "@/lib/habit-store";
+import { useSheetSync } from "@/lib/sheet-sync-store";
 import type { Habit } from "@/lib/habit-types";
 
 
@@ -70,6 +71,7 @@ function TodayPage() {
   } = useHabits();
 
   const navigate = useNavigate();
+  const { status: syncStatus, syncing, syncNow, signIn } = useSheetSync();
   const [celebrate, setCelebrate] = useState(false);
   const [levelUp, setLevelUp] = useState<number | null>(null);
   const [floating, setFloating] = useState<{ id: string; xp: number } | null>(null);
@@ -150,13 +152,23 @@ function TodayPage() {
     <AppShell>
       {celebrate ? <Confetti /> : null}
 
-      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
+      <header className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-bold text-muted-foreground">
             {greeting()}, {state.user.name} 👋
           </p>
           <h1 className="mt-1 truncate text-2xl">Level {level.level}</h1>
         </div>
+        <button
+          type="button"
+          onClick={() => void (syncStatus.signedIn ? syncNow() : signIn())}
+          disabled={syncing}
+          aria-label={syncStatus.signedIn ? "Sync habits now" : "Connect Google to sync"}
+          title={syncStatus.signedIn ? "Sync now" : "Connect Google"}
+          className="btn-pop grid size-11 shrink-0 place-items-center rounded-2xl border border-border bg-card text-primary disabled:opacity-50"
+        >
+          <RefreshCw className={`size-5 ${syncing ? "animate-spin" : ""}`} />
+        </button>
         <Link
           to="/profile"
           aria-label="Open profile"
@@ -224,7 +236,7 @@ function TodayPage() {
         </button>
       </div>
 
-      <section className="mt-6">
+      <section className="mt-5">
         <SectionTitle hint={total ? `${total - done} left` : undefined}>
           {isToday ? "Today's journey" : "That day's journey"}
         </SectionTitle>
@@ -247,11 +259,7 @@ function TodayPage() {
         ) : (
           <>
             {pending.length > 0 ? (
-              <ol className="relative space-y-3 pl-2">
-                <span
-                  className="absolute bottom-6 left-[2.05rem] top-6 -z-0 w-1 rounded-full bg-muted"
-                  aria-hidden
-                />
+              <ol className="space-y-1.5">
                 {pending.map((habit) => (
                   <HabitRow
                     key={habit.id}
@@ -266,11 +274,11 @@ function TodayPage() {
             ) : null}
 
             {finished.length > 0 ? (
-              <div className={pending.length ? "mt-7" : ""}>
-                <p className="mb-2 px-2 text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+              <div className={pending.length ? "mt-4" : ""}>
+                <p className="mb-1.5 px-1 text-[10px] font-extrabold uppercase tracking-wide text-muted-foreground">
                   Completed · {finished.length}
                 </p>
-                <ol className="space-y-3 pl-2">
+                <ol className="space-y-1.5">
                   {finished.map((habit) => (
                     <HabitRow
                       key={habit.id}
@@ -363,21 +371,21 @@ function HabitRow({
   const target = Math.max(1, habit.timesPerDay ?? 1);
 
   return (
-    <li className="relative z-10">
+    <li>
       <button
         type="button"
         onClick={() => onToggle(habit.id, habit.xpReward, isDone)}
         aria-pressed={isDone}
-        className={`btn-pop flex w-full items-center gap-4 rounded-3xl border-2 p-3.5 text-left ${
+        className={`btn-pop flex min-h-12 w-full items-center gap-2.5 rounded-2xl border px-2.5 py-2 text-left ${
           isDone ? "border-success bg-success-soft" : "border-border bg-card hover:border-primary"
         }`}
       >
         <span
-          className={`relative grid size-14 shrink-0 place-items-center rounded-2xl text-2xl ${
+          className={`relative grid size-10 shrink-0 place-items-center rounded-xl text-lg ${
             isDone ? "bg-success text-success-foreground" : "bg-muted"
           }`}
         >
-          {isDone ? <Check className="size-8 animate-pop-in stroke-[3]" /> : habit.icon}
+          {isDone ? <Check className="size-5 animate-pop-in stroke-[3]" /> : habit.icon}
           {floating?.id === habit.id ? (
             <span className="animate-xp-float absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-sm font-extrabold text-success">
               +{floating.xp} XP
@@ -386,13 +394,13 @@ function HabitRow({
         </span>
         <span className="min-w-0 flex-1">
           <span
-            className={`block truncate text-base font-extrabold ${
+            className={`block truncate text-sm font-extrabold leading-tight ${
               isDone ? "text-muted-foreground line-through" : ""
             }`}
           >
             {habit.name}
           </span>
-          <span className="mt-0.5 flex flex-wrap items-center gap-2 text-xs font-bold text-muted-foreground">
+          <span className="mt-0.5 flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-[10px] font-bold leading-tight text-muted-foreground">
             <span style={{ color: `var(--${cat.color})` }}>
               {cat.icon} {cat.label}
             </span>
@@ -409,7 +417,7 @@ function HabitRow({
           </span>
         </span>
         <span
-          className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-extrabold ${
+          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
             isDone ? "bg-success text-success-foreground" : "bg-accent/30 text-accent-foreground"
           }`}
         >
