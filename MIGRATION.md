@@ -749,3 +749,21 @@ npm run deploy
 ```
 
 The Worker secrets already stored in Cloudflare remain intact and do not need to be uploaded again.
+
+
+### OAuth Worker redeploy — completed
+
+The latest Worker code was successfully redeployed after restoring the Cloudflare API token in the current Cloud Shell session.
+
+Verified Worker URL:
+
+`https://habitquest-oauth.mamg97.workers.dev`
+
+The deployed Worker now includes:
+
+- `FRONTEND_ORIGIN=https://mamg97.github.io`
+- `FRONTEND_APP_URL=https://mamg97.github.io/habitquest/`
+- `SESSION_DAYS=90`
+- existing Cloudflare secrets `GOOGLE_CLIENT_SECRET` and `SESSION_SECRET`
+
+The next required validation is the Google OAuth redirect URI plus an end-to-end login from the HabitQuest PWA.
