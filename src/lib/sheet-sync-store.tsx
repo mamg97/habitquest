@@ -58,6 +58,7 @@ function snapshot(payload: SyncPayload) {
   return JSON.stringify({
     habits: payload.habits,
     completions: payload.completions,
+    completionStates: payload.completionStates,
     user: payload.user,
   });
 }
@@ -65,6 +66,7 @@ function snapshot(payload: SyncPayload) {
 type BaseState = {
   habits: SyncPayload["habits"];
   completions: SyncPayload["completions"];
+  completionStates: SyncPayload["completionStates"];
 };
 
 function baseKey(spreadsheetId: string) {
@@ -77,7 +79,11 @@ function loadBase(spreadsheetId: string): BaseState | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as BaseState;
     if (!Array.isArray(parsed?.habits) || !Array.isArray(parsed?.completions)) return null;
-    return parsed;
+    return {
+      habits: parsed.habits,
+      completions: parsed.completions,
+      completionStates: Array.isArray(parsed.completionStates) ? parsed.completionStates : [],
+    };
   } catch {
     return null;
   }
@@ -87,7 +93,11 @@ function saveBase(spreadsheetId: string, payload: SyncPayload) {
   try {
     window.localStorage.setItem(
       baseKey(spreadsheetId),
-      JSON.stringify({ habits: payload.habits, completions: payload.completions }),
+      JSON.stringify({
+        habits: payload.habits,
+        completions: payload.completions,
+        completionStates: payload.completionStates,
+      }),
     );
   } catch {
     /* ignore unavailable storage */
@@ -197,6 +207,7 @@ export function SheetSyncProvider({ children }: { children: ReactNode }) {
     (): SyncPayload => ({
       habits: state.habits,
       completions: state.completions,
+      completionStates: state.completionStates,
       user: state.user,
       updatedAt: localChangedAtRef.current,
     }),
@@ -205,7 +216,11 @@ export function SheetSyncProvider({ children }: { children: ReactNode }) {
 
   const applyRemote = useCallback(
     (payload: SyncPayload) => {
-      importData({ habits: payload.habits, completions: payload.completions });
+      importData({
+        habits: payload.habits,
+        completions: payload.completions,
+        completionStates: payload.completionStates,
+      });
       if (payload.user) {
         const { xp: _xp, ...rest } = payload.user;
         setUser(rest);
@@ -274,11 +289,13 @@ export function SheetSyncProvider({ children }: { children: ReactNode }) {
                 {
                   habits: local.habits,
                   completions: local.completions,
+                  completionStates: local.completionStates,
                   updatedAt: local.updatedAt,
                 },
                 {
                   habits: remote.habits,
                   completions: remote.completions,
+                  completionStates: remote.completionStates,
                   updatedAt: remote.updatedAt,
                 },
               );
@@ -287,6 +304,7 @@ export function SheetSyncProvider({ children }: { children: ReactNode }) {
           mergedPayload = {
             habits: merged.habits,
             completions: merged.completions,
+            completionStates: merged.completionStates,
             user: remoteIsNewer ? (remote.user ?? local.user) : local.user,
             updatedAt: new Date().toISOString(),
           };
