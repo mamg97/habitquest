@@ -831,3 +831,19 @@ Two usability changes were added to the Home / Today screen during the migration
    - tighter separation between pending and completed habits.
 
 The entire compact row remains tappable so habits can still be marked or unmarked quickly on iPhone/iPad.
+
+
+### Today view selector — list vs compact grid
+
+The previous Home compaction was refined after clarification.
+
+The Today/Home screen now has the same view-toggle pattern as the Habits page:
+
+- **List view**: restores the original large HabitQuest cards, including large icon, category, reminder and XP badge.
+- **Compact grid view**: shows two smaller cards per row so many habits can be reviewed and checked quickly at a glance.
+
+The toggle uses the same `LayoutGrid ↔ List` control pattern already present on the Habits page.
+
+The selected value reuses `user.habitView`, so the visual preference is remembered and remains consistent between Today and Habits.
+
+Both views keep the entire habit card tappable for marking/unmarking completions.
