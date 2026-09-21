@@ -556,3 +556,31 @@ npx wrangler whoami
 ```
 
 The actual Cloudflare API token must never be sent to ChatGPT or committed to GitHub.
+
+
+### Cloudflare API token authentication — completed
+
+Wrangler authentication from Google Cloud Shell now works using the `CLOUDFLARE_API_TOKEN` environment variable.
+
+Verified command:
+
+```bash
+npx wrangler whoami
+```
+
+Result:
+
+- authentication succeeded;
+- Wrangler recognized the personal Cloudflare account;
+- API token is being read from the environment variable;
+- no browser OAuth callback is required anymore.
+
+Next pending steps:
+
+1. store `GOOGLE_CLIENT_SECRET` in Cloudflare Worker secrets;
+2. generate and store `SESSION_SECRET`;
+3. deploy the Worker;
+4. capture the public `workers.dev` URL;
+5. add the Worker OAuth callback URL to Google Cloud;
+6. connect the HabitQuest frontend to the Worker;
+7. validate persistent Google Sheets login on iPhone/iPad.
