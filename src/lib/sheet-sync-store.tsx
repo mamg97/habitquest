@@ -11,17 +11,24 @@ import {
 import { toast } from "sonner";
 import { useHabits } from "./habit-store";
 import {
+  clearStoredGoogleAccessToken,
   createHabitQuestSpreadsheet,
   extractSpreadsheetId,
   getSpreadsheetMeta,
   getStoredGoogleAccessToken,
-  getStoredGoogleClientId,
   readSheetState,
-  requestGoogleAccessToken,
-  revokeGoogleAccessToken,
-  storeGoogleClientId,
+  storeGoogleAccessTokenUntil,
   writeSheetState,
 } from "./google-sheets-client";
+import {
+  clearBackendSession,
+  consumeBackendSessionFromUrl,
+  getStoredBackendSession,
+  getStoredBackendUrl,
+  refreshBackendAccessToken,
+  revokeBackendSession,
+  startBackendAuthorization,
+} from "./oauth-backend-client";
 import { mergeStates, threeWayMerge } from "./sync-format";
 import type { SyncPayload, SyncStatus } from "./sync-types";
 
@@ -34,12 +41,9 @@ const DEFAULT_SPREADSHEET_URL =
 const DEFAULT_SPREADSHEET_TITLE = "HabitQuest Data";
 
 type SyncCtx = {
-  clientId: string;
-  configured: boolean;
   status: SyncStatus;
   busy: boolean;
   syncing: boolean;
-  saveClientId: (clientId: string) => void;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   disconnect: () => Promise<void>;
@@ -146,11 +150,15 @@ function hasData(payload: SyncPayload) {
 
 export function SheetSyncProvider({ children }: { children: ReactNode }) {
   const { ready, state, importData, setUser } = useHabits();
-  const [clientId, setClientId] = useState(() => getStoredGoogleClientId());
+  const [backendUrl] = useState(() => getStoredBackendUrl());
+  const [initialBackendSession] = useState(
+    () => consumeBackendSessionFromUrl() || getStoredBackendSession(),
+  );
+  const [backendSession, setBackendSession] = useState<string | null>(initialBackendSession);
   const [initialAccessToken] = useState(() => getStoredGoogleAccessToken());
   const [status, setStatus] = useState<SyncStatus>(() => ({
     ...loadStatus(),
-    signedIn: Boolean(initialAccessToken),
+    signedIn: Boolean(initialBackendSession || initialAccessToken),
   }));
   const [busy, setBusy] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -168,18 +176,22 @@ export function SheetSyncProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const saveClientId = useCallback((value: string) => {
-    const clean = value.trim();
-    storeGoogleClientId(clean);
-    setClientId(clean);
-    if (!clean) {
-      revokeGoogleAccessToken(accessTokenRef.current);
-      accessTokenRef.current = null;
-      setStatus((previous) => ({ ...previous, signedIn: false }));
-      pulledRef.current = false;
-      remoteSnapshotRef.current = null;
+  const getUsableAccessToken = useCallback(async () => {
+    const stored = getStoredGoogleAccessToken();
+    if (stored) {
+      accessTokenRef.current = stored;
+      return stored;
     }
-  }, []);
+
+    if (!backendSession) return null;
+
+    const refreshed = await refreshBackendAccessToken(backendUrl, backendSession);
+    if (!refreshed.accessToken) throw new Error("Google did not return an access token.");
+
+    storeGoogleAccessTokenUntil(refreshed.accessToken, refreshed.expiresAt);
+    accessTokenRef.current = refreshed.accessToken;
+    return refreshed.accessToken;
+  }, [backendSession, backendUrl]);
 
   const buildPayload = useCallback(
     (): SyncPayload => ({
@@ -206,7 +218,7 @@ export function SheetSyncProvider({ children }: { children: ReactNode }) {
 
   const pushPayload = useCallback(
     async (payload: SyncPayload, spreadsheetId: string) => {
-      const accessToken = accessTokenRef.current;
+      const accessToken = await getUsableAccessToken();
       if (!accessToken) throw new Error("Reconnect Google before saving.");
       if (!hasData(payload)) return;
 
@@ -220,12 +232,12 @@ export function SheetSyncProvider({ children }: { children: ReactNode }) {
         setSyncing(false);
       }
     },
-    [updateStatus],
+    [getUsableAccessToken, updateStatus],
   );
 
   const syncFromSheet = useCallback(
     async (spreadsheetId: string, { silent = true }: { silent?: boolean } = {}) => {
-      const accessToken = accessTokenRef.current;
+      const accessToken = await getUsableAccessToken();
       if (!accessToken) throw new Error("Reconnect Google before syncing.");
 
       setSyncing(true);
@@ -293,44 +305,49 @@ export function SheetSyncProvider({ children }: { children: ReactNode }) {
         setSyncing(false);
       }
     },
-    [applyRemote, buildPayload, pushPayload, updateStatus],
+    [applyRemote, buildPayload, getUsableAccessToken, pushPayload, updateStatus],
   );
 
   const signIn = useCallback(async () => {
-    if (!clientId) {
-      toast.error("Add your Google OAuth client ID first");
+    if (backendSession) {
+      setBusy(true);
+      try {
+        await getUsableAccessToken();
+        setStatus((previous) => ({ ...previous, signedIn: true }));
+        if (status.spreadsheetId) {
+          await syncFromSheet(status.spreadsheetId, { silent: false });
+          pulledRef.current = true;
+        }
+      } catch (error) {
+        console.error(error);
+        clearBackendSession();
+        setBackendSession(null);
+        setStatus((previous) => ({ ...previous, signedIn: false }));
+        toast.error("Google session expired. Connect again.");
+      } finally {
+        setBusy(false);
+      }
       return;
     }
 
-    setBusy(true);
-    try {
-      const accessToken = await requestGoogleAccessToken(clientId);
-      accessTokenRef.current = accessToken;
-      setStatus((previous) => ({ ...previous, signedIn: true }));
-
-      if (status.spreadsheetId) {
-        pulledRef.current = false;
-        remoteSnapshotRef.current = null;
-        await syncFromSheet(status.spreadsheetId, { silent: false });
-        pulledRef.current = true;
-      } else {
-        toast.success("Google connected");
-      }
-    } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Could not connect Google");
-    } finally {
-      setBusy(false);
-    }
-  }, [clientId, status.spreadsheetId, syncFromSheet]);
+    startBackendAuthorization(backendUrl);
+  }, [backendSession, backendUrl, getUsableAccessToken, status.spreadsheetId, syncFromSheet]);
 
   const signOut = useCallback(async () => {
-    revokeGoogleAccessToken(accessTokenRef.current);
+    try {
+      if (backendSession) await revokeBackendSession(backendUrl, backendSession);
+    } catch (error) {
+      console.error(error);
+    }
+
+    clearBackendSession();
+    clearStoredGoogleAccessToken();
+    setBackendSession(null);
     accessTokenRef.current = null;
     pulledRef.current = false;
     remoteSnapshotRef.current = null;
     setStatus((previous) => ({ ...previous, signedIn: false }));
-  }, []);
+  }, [backendSession, backendUrl]);
 
   const disconnect = useCallback(async () => {
     pulledRef.current = false;
@@ -475,15 +492,6 @@ export function SheetSyncProvider({ children }: { children: ReactNode }) {
     const tick = () => {
       if (document.visibilityState !== "visible") return;
 
-      const storedToken = getStoredGoogleAccessToken();
-      if (!storedToken) {
-        accessTokenRef.current = null;
-        pulledRef.current = false;
-        setStatus((previous) => ({ ...previous, signedIn: false }));
-        return;
-      }
-
-      accessTokenRef.current = storedToken;
       void syncFromSheet(status.spreadsheetId!, { silent: true })
         .then(() => {
           pulledRef.current = true;
@@ -507,12 +515,9 @@ export function SheetSyncProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<SyncCtx>(
     () => ({
-      clientId,
-      configured: Boolean(clientId),
       status,
       busy,
       syncing,
-      saveClientId,
       signIn,
       signOut,
       disconnect,
@@ -522,11 +527,9 @@ export function SheetSyncProvider({ children }: { children: ReactNode }) {
     }),
     [
       busy,
-      clientId,
       createSheet,
       disconnect,
       linkSheet,
-      saveClientId,
       signIn,
       signOut,
       status,
