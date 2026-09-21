@@ -1,20 +1,17 @@
 const BACKEND_URL_KEY = "habitquest.oauth-backend-url.v1";
 const SESSION_TOKEN_KEY = "habitquest.oauth-session.v1";
+const DEFAULT_BACKEND_URL = "https://habitquest-oauth.mamg97.workers.dev";
 
 export type BackendTokenResponse = {
   accessToken: string | null;
   expiresAt: number | null;
 };
 
-export type BackendExchangeResponse = BackendTokenResponse & {
-  sessionToken: string;
-};
-
 export function getStoredBackendUrl() {
   try {
-    return window.localStorage.getItem(BACKEND_URL_KEY)?.trim() || "";
+    return window.localStorage.getItem(BACKEND_URL_KEY)?.trim() || DEFAULT_BACKEND_URL;
   } catch {
-    return "";
+    return DEFAULT_BACKEND_URL;
   }
 }
 
@@ -52,6 +49,29 @@ export function clearBackendSession() {
   }
 }
 
+export function consumeBackendSessionFromUrl() {
+  try {
+    const hash = window.location.hash;
+    if (!hash.startsWith("#oauth_session=")) return null;
+    const value = decodeURIComponent(hash.slice("#oauth_session=".length));
+    if (!value) return null;
+
+    storeBackendSession(value);
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + window.location.search + "#/profile",
+    );
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+export function startBackendAuthorization(backendUrl: string) {
+  window.location.assign(backendUrl.replace(/\/$/, "") + "/oauth/start");
+}
+
 async function backendFetch<T>(
   backendUrl: string,
   path: string,
@@ -81,19 +101,6 @@ async function backendFetch<T>(
 
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
-}
-
-export async function exchangeAuthorizationCode(
-  backendUrl: string,
-  code: string,
-): Promise<BackendExchangeResponse> {
-  return backendFetch<BackendExchangeResponse>(backendUrl, "/oauth/exchange", null, {
-    method: "POST",
-    headers: {
-      "X-Requested-With": "XmlHttpRequest",
-    },
-    body: JSON.stringify({ code }),
-  });
 }
 
 export async function refreshBackendAccessToken(
