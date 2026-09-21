@@ -1,4 +1,4 @@
-import type { Completion, Habit } from "./habit-types";
+import type { Completion, CompletionDayState, Habit } from "./habit-types";
 import type { SyncPayload } from "./sync-types";
 
 export const HABIT_HEADER = [
@@ -18,6 +18,7 @@ export const HABIT_HEADER = [
 ];
 
 export const HISTORY_HEADER = ["id", "habitId", "habitName", "date", "at", "xpEarned"];
+export const SYNC_STATE_HEADER = ["habitId", "date", "count", "updatedAt"];
 
 /** Google Sheets rejects cells above 50k chars, so long values are chunked. */
 const CHUNK = 40000;
@@ -49,6 +50,15 @@ export function historyRows(payload: SyncPayload): string[][] {
     c.date,
     c.at ?? "",
     String(c.xpEarned),
+  ]);
+}
+
+export function syncStateRows(payload: SyncPayload): string[][] {
+  return payload.completionStates.map((state) => [
+    state.habitId,
+    state.date,
+    String(Math.max(0, Math.floor(state.count))),
+    state.updatedAt,
   ]);
 }
 
@@ -93,91 +103,217 @@ export function parseMetaRows(rows: unknown[][]): {
   return { user: user as SyncPayload["user"] | undefined, updatedAt };
 }
 
-function completionKey(c: Completion) {
-  return `${c.habitId}|${c.date}|${c.at ?? ""}`;
+export function completionDayKey(value: Pick<Completion, "habitId" | "date">) {
+  return `${value.habitId}|${value.date}`;
 }
 
-/**
- * Union merge of two states: nothing is ever lost, whichever device is newer
- * wins for records that exist on both sides.
- */
-export function mergeStates(
-  a: { habits: Habit[]; completions: Completion[]; updatedAt: string },
-  b: { habits: Habit[]; completions: Completion[]; updatedAt: string },
-): { habits: Habit[]; completions: Completion[] } {
-  const [older, newer] = a.updatedAt <= b.updatedAt ? [a, b] : [b, a];
+function legacyCompletionTimestamp(completion: Completion) {
+  if (completion.at) return completion.at;
+  return `${completion.date}T12:00:00.000Z`;
+}
 
-  const habits = new Map<string, Habit>();
-  for (const h of older.habits) habits.set(h.id, h);
-  for (const h of newer.habits) habits.set(h.id, h);
-
-  const completions = new Map<string, Completion>();
-  for (const c of [...older.completions, ...newer.completions]) {
-    completions.set(c.id, c);
+/** Builds an initial LWW state from legacy History rows. */
+export function deriveCompletionStates(completions: Completion[]): CompletionDayState[] {
+  const grouped = new Map<string, CompletionDayState>();
+  for (const completion of completions) {
+    const key = completionDayKey(completion);
+    const current = grouped.get(key);
+    const timestamp = legacyCompletionTimestamp(completion);
+    if (!current) {
+      grouped.set(key, {
+        habitId: completion.habitId,
+        date: completion.date,
+        count: 1,
+        updatedAt: timestamp,
+      });
+      continue;
+    }
+    current.count += 1;
+    if (timestamp > current.updatedAt) current.updatedAt = timestamp;
   }
-  // Drop duplicates that share the same habit/date/time but different ids.
-  const byKey = new Map<string, Completion>();
-  for (const c of completions.values()) {
-    const k = completionKey(c);
-    if (!byKey.has(k)) byKey.set(k, c);
+  return [...grouped.values()];
+}
+
+type CompletionStateLike = {
+  habits: Habit[];
+  completions: Completion[];
+  completionStates?: CompletionDayState[] | undefined;
+};
+
+function normalizedCompletionStates(state: CompletionStateLike) {
+  const map = new Map<string, CompletionDayState>();
+  for (const derived of deriveCompletionStates(state.completions)) {
+    map.set(completionDayKey(derived), derived);
+  }
+  for (const explicit of state.completionStates ?? []) {
+    if (!explicit.habitId || !explicit.date || !explicit.updatedAt) continue;
+    map.set(completionDayKey(explicit), {
+      ...explicit,
+      count: Math.max(0, Math.floor(Number(explicit.count) || 0)),
+    });
+  }
+  return map;
+}
+
+function completionsForDay(state: CompletionStateLike, key: string) {
+  return state.completions
+    .filter((completion) => completionDayKey(completion) === key)
+    .sort((a, b) => legacyCompletionTimestamp(a).localeCompare(legacyCompletionTimestamp(b)));
+}
+
+function mergeCompletionTruth(
+  a: CompletionStateLike,
+  b: CompletionStateLike,
+  habits: Habit[],
+): { completions: Completion[]; completionStates: CompletionDayState[] } {
+  const statesA = normalizedCompletionStates(a);
+  const statesB = normalizedCompletionStates(b);
+  const keys = new Set([...statesA.keys(), ...statesB.keys()]);
+  const habitById = new Map(habits.map((habit) => [habit.id, habit]));
+
+  const completionStates: CompletionDayState[] = [];
+  const completions: Completion[] = [];
+
+  for (const key of keys) {
+    const sa = statesA.get(key);
+    const sb = statesB.get(key);
+
+    let chosen: CompletionDayState;
+    let source: CompletionStateLike;
+
+    if (!sa && sb) {
+      chosen = sb;
+      source = b;
+    } else if (sa && !sb) {
+      chosen = sa;
+      source = a;
+    } else if (sa && sb && sb.updatedAt >= sa.updatedAt) {
+      chosen = sb;
+      source = b;
+    } else if (sa) {
+      chosen = sa;
+      source = a;
+    } else {
+      continue;
+    }
+
+    const normalized = {
+      ...chosen,
+      count: Math.max(0, Math.floor(Number(chosen.count) || 0)),
+    };
+    completionStates.push(normalized);
+
+    if (normalized.count === 0) continue;
+
+    const sourceRows = completionsForDay(source, key);
+    const kept = sourceRows.slice(0, normalized.count);
+    completions.push(...kept);
+
+    if (kept.length < normalized.count) {
+      const habit = habitById.get(normalized.habitId);
+      const xp = habit?.xpReward ?? 0;
+      for (let index = kept.length; index < normalized.count; index++) {
+        completions.push({
+          id: `sync-${normalized.habitId}-${normalized.date}-${index + 1}`,
+          habitId: normalized.habitId,
+          date: normalized.date,
+          at: normalized.updatedAt,
+          xpEarned: xp,
+        });
+      }
+    }
   }
 
+  const known = new Set(habits.map((habit) => habit.id));
   return {
-    habits: [...habits.values()],
-    completions: [...byKey.values()].sort((x, y) =>
-      (x.at ?? x.date).localeCompare(y.at ?? y.date),
-    ),
+    completionStates: completionStates
+      .filter((state) => known.size === 0 || known.has(state.habitId))
+      .sort((x, y) =>
+        x.date === y.date
+          ? x.habitId.localeCompare(y.habitId)
+          : x.date.localeCompare(y.date),
+      ),
+    completions: completions
+      .filter((completion) => known.size === 0 || known.has(completion.habitId))
+      .sort((x, y) =>
+        legacyCompletionTimestamp(x).localeCompare(legacyCompletionTimestamp(y)),
+      ),
   };
 }
 
-type StateLike = { habits: Habit[]; completions: Completion[] };
+/**
+ * Last-write-wins merge.
+ *
+ * Habits still use the globally newer payload for conflicting records.
+ * Completion state is resolved independently for each habit+day using the
+ * latest mark/unmark action timestamp. count=0 is a tombstone, so an older
+ * completion on another device cannot resurrect an explicit unmark.
+ */
+export function mergeStates(
+  a: {
+    habits: Habit[];
+    completions: Completion[];
+    completionStates?: CompletionDayState[] | undefined;
+    updatedAt: string;
+  },
+  b: {
+    habits: Habit[];
+    completions: Completion[];
+    completionStates?: CompletionDayState[] | undefined;
+    updatedAt: string;
+  },
+): { habits: Habit[]; completions: Completion[]; completionStates: CompletionDayState[] } {
+  const [older, newer] = a.updatedAt <= b.updatedAt ? [a, b] : [b, a];
+
+  const habits = new Map<string, Habit>();
+  for (const habit of older.habits) habits.set(habit.id, habit);
+  for (const habit of newer.habits) habits.set(habit.id, habit);
+
+  const mergedHabits = [...habits.values()];
+  const completionTruth = mergeCompletionTruth(a, b, mergedHabits);
+
+  return {
+    habits: mergedHabits,
+    ...completionTruth,
+  };
+}
+
+type StateLike = {
+  habits: Habit[];
+  completions: Completion[];
+  completionStates?: CompletionDayState[] | undefined;
+};
 
 /**
  * Three-way merge against the last state this device synced with the sheet.
  *
- * The sheet (remote) is the source of truth: rows edited or deleted by hand in
- * the spreadsheet win. Only changes this device made *after* the last sync
- * (additions, edits, deletions) are replayed on top of the remote version.
+ * Habit edits/deletes use the base snapshot. Completion state does not rely on
+ * absence anymore: it uses explicit per-day LWW state, including count=0
+ * tombstones, so the latest action on any device wins.
  */
 export function threeWayMerge(
   base: StateLike,
   local: StateLike,
   remote: StateLike,
-): { habits: Habit[]; completions: Completion[] } {
-  const baseH = new Map(base.habits.map((h) => [h.id, h]));
-  const localH = new Map(local.habits.map((h) => [h.id, h]));
-  const habits = new Map(remote.habits.map((h) => [h.id, h]));
+): { habits: Habit[]; completions: Completion[]; completionStates: CompletionDayState[] } {
+  const baseH = new Map(base.habits.map((habit) => [habit.id, habit]));
+  const localH = new Map(local.habits.map((habit) => [habit.id, habit]));
+  const habits = new Map(remote.habits.map((habit) => [habit.id, habit]));
 
-  for (const [id, h] of localH) {
-    const b = baseH.get(id);
-    // Added locally, or edited locally since the last sync -> keep local.
-    if (!b || JSON.stringify(b) !== JSON.stringify(h)) habits.set(id, h);
+  for (const [id, habit] of localH) {
+    const original = baseH.get(id);
+    if (!original || JSON.stringify(original) !== JSON.stringify(habit)) habits.set(id, habit);
   }
-  // Deleted locally since the last sync -> remove.
-  for (const id of baseH.keys()) if (!localH.has(id)) habits.delete(id);
 
-  const baseC = new Map(base.completions.map((c) => [c.id, c]));
-  const localC = new Map(local.completions.map((c) => [c.id, c]));
-  const completions = new Map(remote.completions.map((c) => [c.id, c]));
-
-  for (const [id, c] of localC) {
-    const b = baseC.get(id);
-    if (!b || JSON.stringify(b) !== JSON.stringify(c)) completions.set(id, c);
+  for (const id of baseH.keys()) {
+    if (!localH.has(id)) habits.delete(id);
   }
-  for (const id of baseC.keys()) if (!localC.has(id)) completions.delete(id);
 
-  // Drop duplicates that share the same habit/date/time but different ids.
-  const byKey = new Map<string, Completion>();
-  for (const c of completions.values()) {
-    const k = completionKey(c);
-    if (!byKey.has(k)) byKey.set(k, c);
-  }
-  // Never keep history pointing at habits that no longer exist anywhere.
-  const known = new Set(habits.keys());
+  const mergedHabits = [...habits.values()];
+  const completionTruth = mergeCompletionTruth(local, remote, mergedHabits);
+
   return {
-    habits: [...habits.values()],
-    completions: [...byKey.values()]
-      .filter((c) => known.size === 0 || known.has(c.habitId))
-      .sort((x, y) => (x.at ?? x.date).localeCompare(y.at ?? y.date)),
+    habits: mergedHabits,
+    ...completionTruth,
   };
 }
