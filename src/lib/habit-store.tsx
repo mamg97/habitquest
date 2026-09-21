@@ -16,9 +16,11 @@ import {
   XP_BY_DIFFICULTY,
   type AppState,
   type Completion,
+  type CompletionDayState,
   type Habit,
   type ThemeMode,
 } from "./habit-types";
+import { completionDayKey, deriveCompletionStates } from "./sync-format";
 
 const STORAGE_KEY = "habitquest.v1";
 
@@ -89,6 +91,7 @@ function makeSeed(): AppState {
     },
     habits,
     completions,
+    completionStates: deriveCompletionStates(completions),
   };
 }
 
@@ -107,6 +110,7 @@ export function emptyState(): AppState {
     },
     habits: [],
     completions: [],
+    completionStates: [],
   };
 }
 
@@ -122,6 +126,13 @@ function migrate(raw: AppState): AppState {
       timesPerDay: Number.isFinite(h.timesPerDay) && h.timesPerDay > 0 ? h.timesPerDay : 1,
     })),
     completions: (raw.completions ?? []).map((c) => ({ ...c })),
+    completionStates:
+      Array.isArray(raw.completionStates) && raw.completionStates.length
+        ? raw.completionStates.map((state) => ({
+            ...state,
+            count: Math.max(0, Math.floor(Number(state.count) || 0)),
+          }))
+        : deriveCompletionStates(raw.completions ?? []),
   };
 }
 
@@ -155,7 +166,11 @@ type Ctx = {
   achievementProgress: Record<string, number>;
   reset: () => void;
   loadSample: () => void;
-  importData: (data: { habits: Habit[]; completions: Completion[] }) => void;
+  importData: (data: {
+    habits: Habit[];
+    completions: Completion[];
+    completionStates?: CompletionDayState[] | undefined;
+  }) => void;
 };
 
 const HabitContext = createContext<Ctx | null>(null);
@@ -268,32 +283,60 @@ export function HabitProvider({ children }: { children: ReactNode }) {
     return set;
   }, [state.habits, todayCounts]);
 
-  /** One tap: adds a completion on the selected day. If the target is met, it clears that day. */
+  /** One tap updates the selected day and records an explicit LWW action timestamp. */
   const toggleHabit = useCallback(
     (habitId: string) => {
       setState((prev) => {
         const key = selectedDate;
         const habit = prev.habits.find((h) => h.id === habitId);
         if (!habit) return prev;
+
         const target = Math.max(1, habit.timesPerDay ?? 1);
         const todays = prev.completions.filter((c) => c.habitId === habitId && c.date === key);
+        const actionAt = new Date().toISOString();
+        const stateKey = `${habitId}|${key}`;
+        const stateMap = new Map(
+          (prev.completionStates ?? deriveCompletionStates(prev.completions)).map((state) => [
+            completionDayKey(state),
+            state,
+          ]),
+        );
 
         if (todays.length >= target) {
-          const removedXp = todays.reduce((a, c) => a + c.xpEarned, 0);
-          const ids = new Set(todays.map((c) => c.id));
+          const removedXp = todays.reduce((sum, completion) => sum + completion.xpEarned, 0);
+          const ids = new Set(todays.map((completion) => completion.id));
+          stateMap.set(stateKey, {
+            habitId,
+            date: key,
+            count: 0,
+            updatedAt: actionAt,
+          });
+
           return {
             ...prev,
             user: { ...prev.user, xp: Math.max(0, prev.user.xp - removedXp) },
-            completions: prev.completions.filter((c) => !ids.has(c.id)),
+            completions: prev.completions.filter((completion) => !ids.has(completion.id)),
+            completionStates: [...stateMap.values()],
           };
         }
 
         const now = new Date();
-        const at = key === toKey(now) ? now : (() => {
-          const d = fromKey(key);
-          d.setHours(12, 0, 0, 0);
-          return d;
-        })();
+        const at =
+          key === toKey(now)
+            ? now
+            : (() => {
+                const date = fromKey(key);
+                date.setHours(12, 0, 0, 0);
+                return date;
+              })();
+
+        const nextCount = todays.length + 1;
+        stateMap.set(stateKey, {
+          habitId,
+          date: key,
+          count: nextCount,
+          updatedAt: actionAt,
+        });
 
         return {
           ...prev,
@@ -308,6 +351,7 @@ export function HabitProvider({ children }: { children: ReactNode }) {
               xpEarned: habit.xpReward,
             },
           ],
+          completionStates: [...stateMap.values()],
         };
       });
     },
@@ -350,6 +394,7 @@ export function HabitProvider({ children }: { children: ReactNode }) {
       ...prev,
       habits: prev.habits.filter((h) => h.id !== id),
       completions: prev.completions.filter((c) => c.habitId !== id),
+      completionStates: prev.completionStates.filter((state) => state.habitId !== id),
     }));
   }, []);
 
@@ -445,11 +490,15 @@ export function HabitProvider({ children }: { children: ReactNode }) {
     achievementProgress,
     reset: () => setState(emptyState()),
     loadSample: () => setState(makeSeed()),
-    importData: ({ habits, completions }) =>
+    importData: ({ habits, completions, completionStates }) =>
       setState((prev) => ({
         ...prev,
         habits,
         completions,
+        completionStates:
+          completionStates && completionStates.length
+            ? completionStates
+            : deriveCompletionStates(completions),
         user: { ...prev.user, xp: completions.reduce((a, c) => a + c.xpEarned, 0) },
       })),
   };
