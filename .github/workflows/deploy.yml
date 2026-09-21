@@ -39,10 +39,10 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Validate OAuth backend
+      - name: Validate OAuth Worker
         run: |
-          npm install --prefix backend --no-audit --no-fund
-          node --check backend/server.mjs
+          npm install --prefix worker --no-audit --no-fund
+          node --check worker/src/index.js
 
       - name: Configure GitHub Pages
         if: github.ref == 'refs/heads/main'
