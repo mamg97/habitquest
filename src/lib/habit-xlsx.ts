@@ -1,15 +1,25 @@
 import * as XLSX from "xlsx";
-import type { AppState, Completion, Difficulty, Frequency, Habit } from "./habit-types";
+import type {
+  AppState,
+  Completion,
+  CompletionDayState,
+  Difficulty,
+  Frequency,
+  Habit,
+} from "./habit-types";
 import { XP_BY_DIFFICULTY } from "./habit-types";
 
 import {
   HABIT_HEADER,
   HISTORY_HEADER,
+  SYNC_STATE_HEADER,
+  deriveCompletionStates,
   habitRows,
   historyRows,
   metaRows,
+  syncStateRows,
 } from "./sync-format";
-import { HABIT_SHEET, HISTORY_SHEET, META_SHEET } from "./sync-types";
+import { HABIT_SHEET, HISTORY_SHEET, META_SHEET, SYNC_STATE_SHEET } from "./sync-types";
 
 /** Exports the same three-sheet format used by the Google Sheets sync. */
 export function exportStateToXlsx(state: AppState, filename = "habitquest-data.xlsx") {
@@ -18,6 +28,10 @@ export function exportStateToXlsx(state: AppState, filename = "habitquest-data.x
     completions: [...state.completions].sort((a, b) =>
       (a.at ?? a.date).localeCompare(b.at ?? b.date),
     ),
+    completionStates:
+      state.completionStates?.length > 0
+        ? state.completionStates
+        : deriveCompletionStates(state.completions),
     user: state.user,
     updatedAt: new Date().toISOString(),
   };
@@ -34,6 +48,11 @@ export function exportStateToXlsx(state: AppState, filename = "habitquest-data.x
     HISTORY_SHEET,
   );
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(metaRows(payload)), META_SHEET);
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.aoa_to_sheet([SYNC_STATE_HEADER, ...syncStateRows(payload)]),
+    SYNC_STATE_SHEET,
+  );
   XLSX.writeFile(wb, filename);
 }
 
@@ -63,6 +82,7 @@ function normalizeDate(v: unknown): string | null {
 export type ImportResult = {
   habits: Habit[];
   completions: Completion[];
+  completionStates: CompletionDayState[];
   newHabits: number;
   newCompletions: number;
   skipped: number;
@@ -141,7 +161,10 @@ function mergeWorkbook(wb: XLSX.WorkBook, state: AppState): ImportResult {
   let skipped = 0;
 
   const histSheets = wb.SheetNames.filter(
-    (n) => n !== habitSheetName && n.toLowerCase() !== "meta",
+    (n) =>
+      n !== habitSheetName &&
+      n.toLowerCase() !== "meta" &&
+      n.toLowerCase() !== SYNC_STATE_SHEET.toLowerCase(),
   );
   for (const sheetName of histSheets) {
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[sheetName]!);
@@ -171,7 +194,24 @@ function mergeWorkbook(wb: XLSX.WorkBook, state: AppState): ImportResult {
   }
 
 
-  return { habits, completions, newHabits, newCompletions, skipped };
+  let completionStates = deriveCompletionStates(completions);
+  const syncStateSheetName = wb.SheetNames.find(
+    (name) => name.toLowerCase() === SYNC_STATE_SHEET.toLowerCase(),
+  );
+  if (syncStateSheetName) {
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[syncStateSheetName]!);
+    const parsed = rows
+      .map((row) => ({
+        habitId: str(pick(row, ["habitid", "habit_id"])),
+        date: normalizeDate(pick(row, ["date", "fecha"])) ?? "",
+        count: Math.max(0, Math.floor(Number(pick(row, ["count", "conteo"])) || 0)),
+        updatedAt: str(pick(row, ["updatedat", "updated_at", "timestamp"])),
+      }))
+      .filter((state) => state.habitId && state.date && state.updatedAt);
+    if (parsed.length) completionStates = parsed;
+  }
+
+  return { habits, completions, completionStates, newHabits, newCompletions, skipped };
 }
 
 /** Builds an ISO timestamp from a date key plus a time/timestamp cell. */
