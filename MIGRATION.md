@@ -767,3 +767,27 @@ The deployed Worker now includes:
 - existing Cloudflare secrets `GOOGLE_CLIENT_SECRET` and `SESSION_SECRET`
 
 The next required validation is the Google OAuth redirect URI plus an end-to-end login from the HabitQuest PWA.
+
+
+### OAuth callback 404 on iPhone/iPad — fixed
+
+During the first end-to-end OAuth test from the installed PWA, Google authorization returned to HabitQuest but the app displayed its internal 404 page.
+
+Root cause:
+
+The Cloudflare Worker returns the opaque session as:
+
+`#oauth_session=...`
+
+HabitQuest uses TanStack Router with hash history. The router was being created before the OAuth fragment was consumed, so it interpreted `oauth_session=...` as an application route and rendered 404.
+
+Fix:
+
+- `src/main.tsx` now consumes the OAuth session fragment **before** dynamically importing and creating the router;
+- the fragment is stored as the persistent backend session;
+- the URL is replaced with `#/profile`;
+- only then does TanStack Router initialize.
+
+No Google Sheet data was modified by this failure.
+
+No Worker redeploy is required for this fix because it is frontend-only. GitHub Pages must finish deploying the new frontend before retesting OAuth.
