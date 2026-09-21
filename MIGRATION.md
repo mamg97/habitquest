@@ -722,3 +722,30 @@ npm run deploy
 ```
 
 The existing Cloudflare secrets remain in place; they do not need to be re-entered.
+
+
+### Wrangler redeploy after Cloud Shell session reset
+
+A later `npm run deploy` attempt fell back to browser OAuth and timed out again because the `CLOUDFLARE_API_TOKEN` environment variable was no longer present in the current Cloud Shell session.
+
+Symptoms:
+
+- Wrangler prints `Attempting to login via OAuth...`
+- callback points to `http://localhost:8976/oauth/callback`
+- deployment ends with `Timed out waiting for authorization code`
+
+Cause:
+
+The Cloudflare API token was only exported for a previous shell/session and environment variables are not persistent across Cloud Shell restarts.
+
+Safe recovery:
+
+```bash
+read -rsp "Cloudflare API token: " CLOUDFLARE_API_TOKEN
+echo
+export CLOUDFLARE_API_TOKEN
+npx wrangler whoami
+npm run deploy
+```
+
+The Worker secrets already stored in Cloudflare remain intact and do not need to be uploaded again.
